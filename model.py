@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 
 from keras.models import Sequential
-from keras.layers import Input, Dense, Flatten
+from keras.layers import Input, Dense, Flatten, Lambda
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
@@ -42,7 +42,8 @@ def main(_):
 	# Build the model
 	model = Sequential()
 
-	model.add(Flatten(input_shape=X_train.shape[1:]))
+	model.add(Lambda(lambda x: (x / 255.0) - 0.5, input_shape=X_train.shape[1:]))
+	model.add(Flatten())
 	model.add(Dense(1))
 
 	print(model.summary()) 
@@ -50,7 +51,7 @@ def main(_):
 	model.compile(optimizer='adam', loss='mse')
 
 	# Train the model
-	model.fit(X_train, y_train, batch_size=FLAGS.batch_size, nb_epoch=FLAGS.epoch, validation_split=0.2, shuffle=True)
+	model.fit(X_train, y_train, batch_size=int(FLAGS.batch_size), nb_epoch=int(FLAGS.epoch), validation_split=0.2, shuffle=True)
 
 	# Save it
 	model.save('model.h5')

@@ -5,3 +5,5 @@
 2. **model_01.h5**: Build LeNet-5 Neural Network without dropout or regularization techniques. Images has been converted to grayscale, resized to 32x32, and normalized.
 
 3. **model_02.h5**: Augment data by flipping each center image around y-axis.
+
+4. **model_03.h5**: Augment data by adding left and right images.

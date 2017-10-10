@@ -3,8 +3,9 @@ import cv2
 import numpy as np
 import tensorflow as tf
 
+from keras import regularizers
 from keras.models import Sequential
-from keras.layers import Input, Dense, Flatten, Lambda, Activation
+from keras.layers import Input, Dense, Flatten, Lambda, Activation, Dropout
 from keras.layers.convolutional import Conv2D
 from keras.layers.pooling import MaxPooling2D
 
@@ -12,33 +13,44 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 
 # command line flags
-flags.DEFINE_string('epoch', 10, "Number of epochs used for training")
+flags.DEFINE_string('epochs', 10, "Number of epochs used for training")
 flags.DEFINE_string('batch_size', 32, "Batch size used for training")
 
 def load_data():
 	# Data
-	images = []
+	images = list()
 	# Target
-	measurements = []
+	steering_angles = list()
 	with open("./data/driving_log.csv") as csvfile:
 		content = csv.reader(csvfile)
 		for line in content:
-			# Change image path as the learning has been done elsewhere
-			center_image_path = line[0]
-			center_image_name = center_image_path.split("\\")[-1]
-			current_path = "./data/IMG/" + center_image_name
-			# Load the image
-			image = cv2.imread(current_path)
-			images.append(image)
-			# Load the steering angle
-			steering = float(line[3])
-			measurements.append(steering)
+
+			steering_center = float(line[3])
+
+			# Create adjusted steering measurements for the side camera images
+			correction = 0.2
+			steering_left = steering_center + correction
+			steering_right = steering_center - correction
+
+			# Change image paths as the learning has been done elsewhere
+			path = "./data/IMG/"
+			img_center = cv2.imread(path + line[0].split("\\")[-1])
+			img_left = cv2.imread(path + line[1].split("\\")[-1])
+			img_right = cv2.imread(path + line[2].split("\\")[-1])
+
+			# Load images and steering angles
+			images.extend([img_center, img_left, img_right])
+			steering_angles.extend([steering_center, steering_left, steering_right])			
+
 			# Augment data by flipping image around y-axis
-			images.append(cv2.flip(image, 1))
-			measurements.append(-1.0*steering)
+			aug_img_center = cv2.flip(img_center, 1)
+			aug_img_left = cv2.flip(img_left, 1)
+			aug_img_right = cv2.flip(img_right, 1)
+			images.extend([aug_img_center, aug_img_left, aug_img_right])
+			steering_angles.extend([-1.0*steering_center, -1.0*steering_left, -1.0*steering_right])	
 
 	# Return numpy arrays
-	return (np.array(images), np.array(measurements))
+	return (np.array(images), np.array(steering_angles))
 
 def grayscale(input):
 	from keras.backend import tf as ktf
@@ -75,11 +87,11 @@ def build_lenet_model(data):
 	model.add(Flatten())
 
 	# --- Layer 3 : Fully-connected + ReLu activation
-	model.add(Dense(120))
+	model.add(Dense(120, activity_regularizer=regularizers.l2(0.01)))
 	model.add(Activation('relu'))
 
 	# --- Layer 4 : Fully-connected + ReLu activation
-	model.add(Dense(84))
+	model.add(Dense(84, activity_regularizer=regularizers.l2(0.01)))
 	model.add(Activation('relu'))
 
 	# --- Layer 5 : Fully-connected
@@ -99,7 +111,7 @@ def main(_):
 	# Build the model LeNet-5
 	model = build_lenet_model(X_train)
 	# Train the model
-	model.fit(X_train, y_train, batch_size=int(FLAGS.batch_size), epochs=int(FLAGS.epoch), validation_split=0.2, shuffle=True)
+	model.fit(X_train, y_train, batch_size=int(FLAGS.batch_size), epochs=int(FLAGS.epochs), validation_split=0.2, shuffle=True)
 	# Save it
 	model.save('model.h5')
 

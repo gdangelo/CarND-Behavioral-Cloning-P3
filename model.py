@@ -31,10 +31,11 @@ def load_data():
 			image = cv2.imread(current_path)
 			images.append(image)
 			# Load the steering angle
-			measurements.append(line[3])
+			steering = float(line[3])
+			measurements.append(steering)
 			# Augment data by flipping image around y-axis
-			#images.append(cv2.flip(image, 1))
-			#measurements.append(-line[3])
+			images.append(cv2.flip(image, 1))
+			measurements.append(-1.0*steering)
 
 	# Return numpy arrays
 	return (np.array(images), np.array(measurements))

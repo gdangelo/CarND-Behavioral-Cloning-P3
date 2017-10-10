@@ -6,7 +6,7 @@ import tensorflow as tf
 from keras import regularizers
 from keras.models import Sequential
 from keras.layers import Input, Dense, Flatten, Lambda, Activation, Dropout
-from keras.layers.convolutional import Conv2D
+from keras.layers.convolutional import Conv2D, Cropping2D
 from keras.layers.pooling import MaxPooling2D
 
 flags = tf.app.flags
@@ -23,8 +23,8 @@ def load_data():
 	steering_angles = list()
 	with open("./data/driving_log.csv") as csvfile:
 		content = csv.reader(csvfile)
+		next(content, None) # Remove header from csvfile
 		for line in content:
-
 			steering_center = float(line[3])
 
 			# Create adjusted steering measurements for the side camera images
@@ -34,20 +34,20 @@ def load_data():
 
 			# Change image paths as the learning has been done elsewhere
 			path = "./data/IMG/"
-			img_center = cv2.imread(path + line[0].split("\\")[-1])
-			img_left = cv2.imread(path + line[1].split("\\")[-1])
-			img_right = cv2.imread(path + line[2].split("\\")[-1])
+			img_center = cv2.imread(path + line[0].split("/")[-1])
+			img_left = cv2.imread(path + line[1].split("/")[-1])
+			img_right = cv2.imread(path + line[2].split("/")[-1])
 
 			# Load images and steering angles
 			images.extend([img_center, img_left, img_right])
-			steering_angles.extend([steering_center, steering_left, steering_right])			
+			steering_angles.extend([steering_center, steering_left, steering_right])
 
 			# Augment data by flipping image around y-axis
 			aug_img_center = cv2.flip(img_center, 1)
 			aug_img_left = cv2.flip(img_left, 1)
 			aug_img_right = cv2.flip(img_right, 1)
 			images.extend([aug_img_center, aug_img_left, aug_img_right])
-			steering_angles.extend([-1.0*steering_center, -1.0*steering_left, -1.0*steering_right])	
+			steering_angles.extend([-1.0*steering_center, -1.0*steering_left, -1.0*steering_right])
 
 	# Return numpy arrays
 	return (np.array(images), np.array(steering_angles))
@@ -66,8 +66,10 @@ def normalize_image(input):
 def build_lenet_model(data):
 	model = Sequential()
 
+	# --- Crop image to save only the region of interest
+	model.add(Cropping2D(cropping=((65,25), (0,0)), input_shape=data.shape[1:]))
 	# --- Convert image into grayscale
-	model.add(Lambda(grayscale, input_shape=data.shape[1:]))
+	model.add(Lambda(grayscale))
 	# --- Resize it to have a 32x32 shape
 	model.add(Lambda(resize_image))
 	# --- Normalize and mean center the data
@@ -97,9 +99,9 @@ def build_lenet_model(data):
 	# --- Layer 5 : Fully-connected
 	model.add(Dense(1))
 
-	print(model.summary()) 
+	print(model.summary())
 
-	model.compile(optimizer='adam', loss='mse')	
+	model.compile(optimizer='adam', loss='mse')
 
 	return model
 

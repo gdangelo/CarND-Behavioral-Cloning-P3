@@ -7,3 +7,5 @@
 3. **model_02.h5**: Augment data by flipping each center image around y-axis.
 
 4. **model_03.h5**: Augment data by adding left and right images.
+
+4. **model_04.h5**: Crop images to save only the region of interest.

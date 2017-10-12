@@ -3,6 +3,10 @@ import cv2
 import numpy as np
 import tensorflow as tf
 
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
 from keras import regularizers
 from keras.models import Sequential
 from keras.layers import Input, Dense, Flatten, Lambda, Activation, Dropout
@@ -56,9 +60,9 @@ def grayscale(input):
 	from keras.backend import tf as ktf
 	return ktf.image.rgb_to_grayscale(input)
 
-def resize_image(input, w=32, h=32):
+def resize_image(input, h, w):
 	from keras.backend import tf as ktf
-	return ktf.image.resize_images(input, [w,h], ktf.image.ResizeMethod.BICUBIC)
+	return ktf.image.resize_images(input, [h,w], ktf.image.ResizeMethod.BICUBIC)
 
 def normalize_image(input):
 	return (input / 255.0) - 0.5
@@ -71,7 +75,7 @@ def build_lenet_model(data):
 	# --- Convert image into grayscale
 	model.add(Lambda(grayscale))
 	# --- Resize it to have a 32x32 shape
-	model.add(Lambda(resize_image))
+	model.add(Lambda(lambda x: resize_image(x, 32, 32)))
 	# --- Normalize and mean center the data
 	model.add(Lambda(normalize_image))
 
@@ -99,7 +103,60 @@ def build_lenet_model(data):
 	# --- Layer 5 : Fully-connected
 	model.add(Dense(1))
 
-	print(model.summary())
+	model.compile(optimizer='adam', loss='mse')
+
+	return model
+
+def build_nvidia_model(data):
+	model = Sequential()
+
+	# --- Crop image to save only the region of interest
+	model.add(Cropping2D(cropping=((65,25), (0,0)), input_shape=data.shape[1:]))
+	# --- Normalize and mean center the data
+	model.add(Lambda(normalize_image))
+	# --- Resize it to have a 66x200 shape
+	model.add(Lambda(lambda x: resize_image(x, 66, 200)))
+
+	# --- Layer 1 : Convolution + ReLu activation + maxpooling
+	model.add(Conv2D(filters=24, kernel_size=(5,5)))
+	model.add(Activation('relu'))
+	model.add(MaxPooling2D(pool_size=(2,2), padding='same'))
+
+	# --- Layer 2 : Convolution + ReLu activation + maxpooling
+	model.add(Conv2D(filters=36, kernel_size=(5,5)))
+	model.add(Activation('relu'))
+	model.add(MaxPooling2D(pool_size=(2,2), padding='same'))
+
+	# --- Layer 3 : Convolution + ReLu activation + maxpooling
+	model.add(Conv2D(filters=48, kernel_size=(5,5)))
+	model.add(Activation('relu'))
+	model.add(MaxPooling2D(pool_size=(2,2), padding='same'))
+
+	# --- Layer 4 : Convolution + ReLu activation
+	model.add(Conv2D(filters=64, kernel_size=(3,3)))
+	model.add(Activation('relu'))
+
+	# --- Layer 5 : Convolution + ReLu activation
+	model.add(Conv2D(filters=64, kernel_size=(3,3)))
+	model.add(Activation('relu'))
+
+	# --- Flatten the weights
+	model.add(Flatten())
+
+	# --- Layer 6 : Fully-connected + ReLu activation
+	model.add(Dense(100))
+	model.add(Activation('relu'))
+
+	# --- Layer 7 : Fully-connected + ReLu activation
+	model.add(Dense(50))
+	model.add(Activation('relu'))
+
+	# --- Layer 8 : Fully-connected + ReLu activation
+	model.add(Dense(10))
+	model.add(Activation('relu'))
+
+	# --- Layer 9 : Fully-connected
+	model.add(Dense(1))
 
 	model.compile(optimizer='adam', loss='mse')
 
@@ -108,10 +165,21 @@ def build_lenet_model(data):
 def main(_):
 	# Import training data
 	X_train, y_train = load_data()
-	print(X_train.shape, y_train.shape)
 
-	# Build the model LeNet-5
-	model = build_lenet_model(X_train)
+	# Visualize data
+	print('Image shape: {}, Steering data shape: {}'.format(X_train.shape, y_train.shape))
+	plt.hist(y_train, bins=50)
+	plt.xlabel('Steering angle')
+	plt.title('Data distribution')
+	plt.legend()
+	plt.tight_layout()
+	plt.show()
+	plt.savefig('distribution.png')
+
+	# Build the model
+	#model = build_lenet_model(X_train)
+	model = build_nvidia_model(X_train)
+	print(model.summary())
 	# Train the model
 	model.fit(X_train, y_train, batch_size=int(FLAGS.batch_size), epochs=int(FLAGS.epochs), validation_split=0.2, shuffle=True)
 	# Save it

@@ -38,9 +38,9 @@ def load_data():
 
 			# Change image paths as the learning has been done elsewhere
 			path = "./data/IMG/"
-			img_center = cv2.imread(path + line[0].split("/")[-1])
-			img_left = cv2.imread(path + line[1].split("/")[-1])
-			img_right = cv2.imread(path + line[2].split("/")[-1])
+			img_center = cv2.imread(path + line[0].split("\\")[-1])
+			img_left = cv2.imread(path + line[1].split("\\")[-1])
+			img_right = cv2.imread(path + line[2].split("\\")[-1])
 
 			# Load images and steering angles
 			images.extend([img_center, img_left, img_right])
@@ -180,8 +180,20 @@ def main(_):
 	#model = build_lenet_model(X_train)
 	model = build_nvidia_model(X_train)
 	print(model.summary())
+
 	# Train the model
-	model.fit(X_train, y_train, batch_size=int(FLAGS.batch_size), epochs=int(FLAGS.epochs), validation_split=0.2, shuffle=True)
+	history_object = model.fit(X_train, y_train, batch_size=int(FLAGS.batch_size), epochs=int(FLAGS.epochs), validation_split=0.2, shuffle=True)
+
+	# Plot the training and validation loss after each epoch
+	plt.plot(history_object['loss'])
+	plt.plot(history_object['val_loss'])
+	plt.title('Model mean squared error loss')
+	plt.ylabel('Mean squared error loss')
+	plt.xlabel('Epoch')
+	plt.legend(['training set', 'validation set'], loc='upper right')
+	plt.show()
+	plt.savefig('training_validation_loss.png')
+
 	# Save it
 	model.save('model.h5')
 

@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 from keras import regularizers
 from keras.models import Sequential
-from keras.layers import Input, Dense, Flatten, Lambda, Activation, Dropout
+from keras.layers import Input, Dense, Flatten, Lambda, Activation, Dropout, ELU
 from keras.layers.convolutional import Conv2D, Cropping2D
 from keras.layers.pooling import MaxPooling2D
 
@@ -75,7 +75,7 @@ def build_lenet_model(data):
 	# --- Convert image into grayscale
 	model.add(Lambda(grayscale))
 	# --- Resize it to have a 32x32 shape
-	model.add(Lambda(resize_image, arguments={'h':32, 'w': 32}))
+	model.add(Lambda(resize_image, arguments={'h': 32, 'w': 32}))
 	# --- Normalize and mean center the data
 	model.add(Lambda(normalize_image))
 
@@ -114,49 +114,49 @@ def build_nvidia_model(data):
 	model.add(Cropping2D(cropping=((65,25), (0,0)), input_shape=data.shape[1:]))
 	# --- Normalize and mean center the data
 	model.add(Lambda(normalize_image))
-	# --- Resize it to have a 66x200 shape
-	model.add(Lambda(resize_image, arguments={'h':66, 'w': 200}))
 
 	# --- Layer 1 : Convolution + ReLu activation + maxpooling
-	model.add(Conv2D(filters=24, kernel_size=(5,5)))
-	model.add(Activation('relu'))
-	model.add(MaxPooling2D(pool_size=(2,2), padding='same'))
+	model.add(Conv2D(filters=24, kernel_size=(5,5), strides=(1,1), kernel_regularizer=regularizers.l2(0.001)))
+	model.add(ELU())
+	model.add(MaxPooling2D(pool_size=(2,2)))
 
 	# --- Layer 2 : Convolution + ReLu activation + maxpooling
-	model.add(Conv2D(filters=36, kernel_size=(5,5)))
-	model.add(Activation('relu'))
-	model.add(MaxPooling2D(pool_size=(2,2), padding='same'))
+	model.add(Conv2D(filters=36, kernel_size=(5,5), strides=(1,1), kernel_regularizer=regularizers.l2(0.001)))
+	model.add(ELU())
+	model.add(MaxPooling2D(pool_size=(2,2)))
 
 	# --- Layer 3 : Convolution + ReLu activation + maxpooling
-	model.add(Conv2D(filters=48, kernel_size=(5,5)))
-	model.add(Activation('relu'))
-	model.add(MaxPooling2D(pool_size=(2,2), padding='same'))
+	model.add(Conv2D(filters=48, kernel_size=(5,5), strides=(1,1), kernel_regularizer=regularizers.l2(0.001)))
+	model.add(ELU())
+	model.add(MaxPooling2D(pool_size=(2,2)))
 
 	# --- Layer 4 : Convolution + ReLu activation
-	model.add(Conv2D(filters=64, kernel_size=(3,3)))
-	model.add(Activation('relu'))
+	model.add(Conv2D(filters=64, kernel_size=(3,3), strides=(1,1), kernel_regularizer=regularizers.l2(0.001)))
+	model.add(ELU())
 
 	# --- Layer 5 : Convolution + ReLu activation
-	model.add(Conv2D(filters=64, kernel_size=(3,3)))
-	model.add(Activation('relu'))
+	model.add(Conv2D(filters=64, kernel_size=(3,3), strides=(1,1), kernel_regularizer=regularizers.l2(0.001)))
+	model.add(ELU())
 
 	# --- Flatten the weights
 	model.add(Flatten())
 
 	# --- Layer 6 : Fully-connected + ReLu activation
-	model.add(Dense(100))
-	model.add(Activation('relu'))
+	model.add(Dense(100, kernel_regularizer=regularizers.l2(0.001)))
+	model.add(ELU())
 
 	# --- Layer 7 : Fully-connected + ReLu activation
-	model.add(Dense(50))
-	model.add(Activation('relu'))
+	model.add(Dense(50, kernel_regularizer=regularizers.l2(0.001)))
+	model.add(ELU())
 
 	# --- Layer 8 : Fully-connected + ReLu activation
-	model.add(Dense(10))
-	model.add(Activation('relu'))
+	model.add(Dense(10, kernel_regularizer=regularizers.l2(0.001)))
+	model.add(ELU())
 
 	# --- Layer 9 : Fully-connected
 	model.add(Dense(1))
+
+	print(model.summary())
 
 	model.compile(optimizer='adam', loss='mse')
 

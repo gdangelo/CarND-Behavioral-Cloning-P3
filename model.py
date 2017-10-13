@@ -75,7 +75,7 @@ def build_lenet_model(data):
 	# --- Convert image into grayscale
 	model.add(Lambda(grayscale))
 	# --- Resize it to have a 32x32 shape
-	model.add(Lambda(lambda x: resize_image(x, 32, 32)))
+	model.add(Lambda(resize_image, arguments={'h':32, 'w': 32}))
 	# --- Normalize and mean center the data
 	model.add(Lambda(normalize_image))
 
@@ -115,7 +115,7 @@ def build_nvidia_model(data):
 	# --- Normalize and mean center the data
 	model.add(Lambda(normalize_image))
 	# --- Resize it to have a 66x200 shape
-	model.add(Lambda(lambda x: resize_image(x, 66, 200)))
+	model.add(Lambda(resize_image, arguments={'h':66, 'w': 200}))
 
 	# --- Layer 1 : Convolution + ReLu activation + maxpooling
 	model.add(Conv2D(filters=24, kernel_size=(5,5)))

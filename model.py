@@ -2,6 +2,7 @@ import csv
 import cv2
 import numpy as np
 import tensorflow as tf
+import sklearn
 
 import matplotlib
 matplotlib.use('Agg')
@@ -13,48 +14,66 @@ from keras.layers import Input, Dense, Flatten, Lambda, Activation, Dropout, ELU
 from keras.layers.convolutional import Conv2D, Cropping2D
 from keras.layers.pooling import MaxPooling2D
 
+from sklearn.model_selection import train_test_split
+from sklearn.utils import shuffle
+
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 
 # command line flags
 flags.DEFINE_string('epochs', 10, "Number of epochs used for training")
 flags.DEFINE_string('batch_size', 32, "Batch size used for training")
+flags.DEFINE_string('test_size', 0.2, "Proportion of the dataset to include in the test split")
 
 def load_data():
-	# Data
-	images = list()
-	# Target
-	steering_angles = list()
+	samples = []
 	with open("./data/driving_log.csv") as csvfile:
 		content = csv.reader(csvfile)
 		next(content, None) # Remove header from csvfile
 		for line in content:
-			steering_center = float(line[3])
+			samples.append(line)
 
-			# Create adjusted steering measurements for the side camera images
-			correction = 0.2
-			steering_left = steering_center + correction
-			steering_right = steering_center - correction
+	train_samples, validation_samples = train_test_split(samples, test_size=int(FLAGS.test_size))
+	return (train_samples, validation_samples)
 
-			# Change image paths as the learning has been done elsewhere
-			path = "./data/IMG/"
-			img_center = cv2.imread(path + line[0].split("\\")[-1])
-			img_left = cv2.imread(path + line[1].split("\\")[-1])
-			img_right = cv2.imread(path + line[2].split("\\")[-1])
+def generator(samples, batch_size):
+	num_samples = len(samples)
+	while(1): # Loop forever so the generator never terminates
+		shuffle(samples)
+		for offset in range(0, num_samples, batch_size):
+			batch_samples = samples[offset:offset+batch_size]
 
-			# Load images and steering angles
-			images.extend([img_center, img_left, img_right])
-			steering_angles.extend([steering_center, steering_left, steering_right])
+			images = list()
+			steering_angles = list()
+			for batch_sample in batch_samples:
+				steering_center = float(batch_sample[3])
 
-			# Augment data by flipping image around y-axis
-			aug_img_center = cv2.flip(img_center, 1)
-			aug_img_left = cv2.flip(img_left, 1)
-			aug_img_right = cv2.flip(img_right, 1)
-			images.extend([aug_img_center, aug_img_left, aug_img_right])
-			steering_angles.extend([-1.0*steering_center, -1.0*steering_left, -1.0*steering_right])
+				# Create adjusted steering measurements for the side camera images
+				correction = 0.2
+				steering_left = steering_center + correction
+				steering_right = steering_center - correction
+
+				# Change image paths as the learning has been done elsewhere
+				path = "./data/IMG/"
+				img_center = cv2.imread(path + batch_sample[0].split("\\")[-1])
+				img_left = cv2.imread(path + batch_sample[1].split("\\")[-1])
+				img_right = cv2.imread(path + batch_sample[2].split("\\")[-1])
+
+				# Load images and steering angles
+				images.extend([img_center, img_left, img_right])
+				steering_angles.extend([steering_center, steering_left, steering_right])
+
+				# Augment data by flipping image around y-axis
+				aug_img_center = cv2.flip(img_center, 1)
+				aug_img_left = cv2.flip(img_left, 1)
+				aug_img_right = cv2.flip(img_right, 1)
+				images.extend([aug_img_center, aug_img_left, aug_img_right])
+				steering_angles.extend([-1.0*steering_center, -1.0*steering_left, -1.0*steering_right])
 
 	# Return numpy arrays
-	return (np.array(images), np.array(steering_angles))
+	X_train = np.array(images)
+	y_train = np.array(steering_angles)
+	return shuffle(X_train, y_train)
 
 def grayscale(input):
 	from keras.backend import tf as ktf
@@ -102,8 +121,6 @@ def build_lenet_model(data):
 
 	# --- Layer 5 : Fully-connected
 	model.add(Dense(1))
-
-	model.compile(optimizer='adam', loss='mse')
 
 	return model
 
@@ -156,33 +173,31 @@ def build_nvidia_model(data):
 	# --- Layer 9 : Fully-connected
 	model.add(Dense(1))
 
-	print(model.summary())
-
-	model.compile(optimizer='adam', loss='mse')
-
 	return model
 
 def main(_):
-	# Import training data
-	X_train, y_train = load_data()
+	# Import training and validation data and create generators
+	train_samples, validation_samples = load_data()
+	train_generator = generator(train_samples, batch_size=int(FLAGS.batch_size))
+	validation_generator = generator(validation_samples, batch_size=int(FLAGS.batch_size))
 
 	# Visualize data
-	print('Image shape: {}, Steering data shape: {}'.format(X_train.shape, y_train.shape))
+	'''print('Image shape: {}, Steering data shape: {}'.format(X_train.shape, y_train.shape))
 	plt.hist(y_train, bins=50)
 	plt.xlabel('Steering angle')
 	plt.title('Data distribution')
 	plt.legend()
 	plt.tight_layout()
 	plt.show()
-	plt.savefig('distribution.png')
+	plt.savefig('distribution.png')'''
 
 	# Build the model
-	#model = build_lenet_model(X_train)
 	model = build_nvidia_model(X_train)
 	print(model.summary())
 
-	# Train the model
-	history_object = model.fit(X_train, y_train, batch_size=int(FLAGS.batch_size), epochs=int(FLAGS.epochs), validation_split=0.2, shuffle=True)
+	# Compile and train the model using the generator function
+	model.compile(loss='mse', optimizer='adam')
+	history_object = model.fit_generator(train_generator, steps_per_epoch=len(train_samples), epochs=int(FLAGS.epochs), validation_data=validation_generator, validation_steps=len(validation_samples), verbose=1)
 
 	# Plot the training and validation loss after each epoch
 	plt.plot(history_object['loss'])

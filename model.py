@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from keras import regularizers
 from keras.models import Sequential
 from keras.layers import Input, Dense, Flatten, Lambda, Activation, Dropout, ELU
+from keras.optimizers import Adam
 from keras.layers.convolutional import Conv2D, Cropping2D
 from keras.layers.pooling import MaxPooling2D
 
@@ -21,7 +22,7 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 
 # command line flags
-flags.DEFINE_string('epochs', 10, "Number of epochs used for training")
+flags.DEFINE_string('epochs', 5, "Number of epochs used for training")
 flags.DEFINE_string('batch_size', 32, "Batch size used for training")
 flags.DEFINE_string('test_size', 0.2, "Proportion of the dataset to include in the test split")
 
@@ -33,8 +34,12 @@ def load_data():
 		for line in content:
 			samples.append(line)
 
-	train_samples, validation_samples = train_test_split(samples, test_size=int(FLAGS.test_size))
+	train_samples, validation_samples = train_test_split(samples, test_size=float(FLAGS.test_size))
 	return (train_samples, validation_samples)
+
+def bgr_to_rgb(img):
+	b,g,r = cv2.split(img) # get b,g,r
+	return cv2.merge([r,g,b]) # switch it to rgb
 
 def generator(samples, batch_size):
 	num_samples = len(samples)
@@ -46,34 +51,36 @@ def generator(samples, batch_size):
 			images = list()
 			steering_angles = list()
 			for batch_sample in batch_samples:
-				steering_center = float(batch_sample[3])
+				# Skip it if very low speed - not representative of driving behavior
+				if (float(batch_sample[6]) >= 0.1):
+					steering_center = float(batch_sample[3])
 
-				# Create adjusted steering measurements for the side camera images
-				correction = 0.2
-				steering_left = steering_center + correction
-				steering_right = steering_center - correction
+					# Create adjusted steering measurements for the side camera images
+					correction = 0.25
+					steering_left = steering_center + correction
+					steering_right = steering_center - correction
 
-				# Change image paths as the learning has been done elsewhere
-				path = "./data/IMG/"
-				img_center = cv2.imread(path + batch_sample[0].split("\\")[-1])
-				img_left = cv2.imread(path + batch_sample[1].split("\\")[-1])
-				img_right = cv2.imread(path + batch_sample[2].split("\\")[-1])
+					# Change image paths as the learning has been done elsewhere
+					path = "./data/IMG/"
+					img_center = bgr_to_rgb(cv2.imread(path + batch_sample[0].split("\\")[-1]))
+					img_left = bgr_to_rgb(cv2.imread(path + batch_sample[1].split("\\")[-1]))
+					img_right = bgr_to_rgb(cv2.imread(path + batch_sample[2].split("\\")[-1]))
 
-				# Load images and steering angles
-				images.extend([img_center, img_left, img_right])
-				steering_angles.extend([steering_center, steering_left, steering_right])
+					# Load images and steering angles
+					images.extend([img_center, img_left, img_right])
+					steering_angles.extend([steering_center, steering_left, steering_right])
 
-				# Augment data by flipping image around y-axis
-				aug_img_center = cv2.flip(img_center, 1)
-				aug_img_left = cv2.flip(img_left, 1)
-				aug_img_right = cv2.flip(img_right, 1)
-				images.extend([aug_img_center, aug_img_left, aug_img_right])
-				steering_angles.extend([-1.0*steering_center, -1.0*steering_left, -1.0*steering_right])
+					# Augment data by flipping image around y-axis
+					aug_img_center = cv2.flip(img_center, 1)
+					aug_img_left = cv2.flip(img_left, 1)
+					aug_img_right = cv2.flip(img_right, 1)
+					images.extend([aug_img_center, aug_img_left, aug_img_right])
+					steering_angles.extend([-1.0*steering_center, -1.0*steering_left, -1.0*steering_right])
 
-	# Return numpy arrays
-	X_train = np.array(images)
-	y_train = np.array(steering_angles)
-	return shuffle(X_train, y_train)
+			# Return numpy arrays
+			X_train = np.array(images)
+			y_train = np.array(steering_angles)
+			yield shuffle(X_train, y_train)
 
 def grayscale(input):
 	from keras.backend import tf as ktf
@@ -86,11 +93,11 @@ def resize_image(input, h, w):
 def normalize_image(input):
 	return (input / 255.0) - 0.5
 
-def build_lenet_model(data):
+def build_lenet_model(input_shape):
 	model = Sequential()
 
 	# --- Crop image to save only the region of interest
-	model.add(Cropping2D(cropping=((65,25), (0,0)), input_shape=data.shape[1:]))
+	model.add(Cropping2D(cropping=((65,25), (0,0)), input_shape=input_shape))
 	# --- Convert image into grayscale
 	model.add(Lambda(grayscale))
 	# --- Resize it to have a 32x32 shape
@@ -124,11 +131,11 @@ def build_lenet_model(data):
 
 	return model
 
-def build_nvidia_model(data):
+def build_nvidia_model(input_shape):
 	model = Sequential()
 
 	# --- Crop image to save only the region of interest
-	model.add(Cropping2D(cropping=((65,25), (0,0)), input_shape=data.shape[1:]))
+	model.add(Cropping2D(cropping=((65,25), (0,0)), input_shape=input_shape))
 	# --- Normalize and mean center the data
 	model.add(Lambda(normalize_image))
 
@@ -192,16 +199,22 @@ def main(_):
 	plt.savefig('distribution.png')'''
 
 	# Build the model
-	model = build_nvidia_model(X_train)
+	model = build_nvidia_model((160,320,3))
 	print(model.summary())
-
 	# Compile and train the model using the generator function
-	model.compile(loss='mse', optimizer='adam')
-	history_object = model.fit_generator(train_generator, steps_per_epoch=len(train_samples), epochs=int(FLAGS.epochs), validation_data=validation_generator, validation_steps=len(validation_samples), verbose=1)
+	model.compile(loss='mse', optimizer=Adam(lr=1e-4))
+	history_object = model.fit_generator(train_generator,\
+		steps_per_epoch=len(train_samples)/int(FLAGS.batch_size),\
+		epochs=int(FLAGS.epochs),\
+		validation_data=validation_generator,\
+		validation_steps=len(validation_samples)/int(FLAGS.batch_size),\
+		verbose=1)
+
+	print(history_object.history.keys())
 
 	# Plot the training and validation loss after each epoch
-	plt.plot(history_object['loss'])
-	plt.plot(history_object['val_loss'])
+	plt.plot(history_object.history['loss'])
+	plt.plot(history_object.history['val_loss'])
 	plt.title('Model mean squared error loss')
 	plt.ylabel('Mean squared error loss')
 	plt.xlabel('Epoch')
